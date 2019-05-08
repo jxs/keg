@@ -1,0 +1,13 @@
+[package]
+name = "keg"
+version = "0.1.0"
+authors = ["João Oliveira <hello@jxs.pt>"]
+edition = "2018"
+
+[features]
+default = []
+rusqlite = ["keg-functions/rusqlite"]
+
+[dependencies]
+keg-functions= {path="../keg-functions"}
+keg-macros= {path="../keg-macros"}

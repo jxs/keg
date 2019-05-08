@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "keg-functions",
+    "keg-macros",
+    "keg"
+]
