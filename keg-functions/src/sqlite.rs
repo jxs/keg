@@ -135,11 +135,13 @@ mod tests {
             &[&"John Legend", &"36", "United States"],
         )
         .unwrap();
-        
+
         let country: String = conn
-            .query_row("SELECT country FROM artists where name = 'John Legend'", NO_PARAMS, |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT country FROM artists where name = 'John Legend'",
+                NO_PARAMS,
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!("United States", country);
     }
