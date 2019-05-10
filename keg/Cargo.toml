@@ -7,6 +7,8 @@ edition = "2018"
 [features]
 default = []
 rusqlite = ["keg-functions/rusqlite"]
+postgres = ["keg-functions/postgres"]
+mysql = ["keg-functions/mysql"]
 
 [dependencies]
 keg-functions= {path="../keg-functions"}

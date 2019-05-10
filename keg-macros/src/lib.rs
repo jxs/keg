@@ -7,8 +7,8 @@ use proc_macro2::{Span as Span2, TokenStream as TokenStream2};
 use quote::quote;
 use quote::ToTokens;
 use std::ffi::OsStr;
-use std::{fs, env};
 use std::path::Path;
+use std::{env, fs};
 use syn::{parse_macro_input, Ident, LitStr};
 use walkdir::{DirEntry, WalkDir};
 
@@ -22,14 +22,14 @@ enum MigrationType {
 }
 
 fn find_migrations_file_names(
-    parent_dir: Option<&Path>,
+    location: Option<&Path>,
     mtype: MigrationType,
     full: bool,
 ) -> Vec<String> {
     //if parent dir was provided start from it, if not start from current dir
-    let start = match parent_dir {
-        Some(parent_dir) => fs::canonicalize(parent_dir).expect("invalid location provided"),
-        None => env::current_dir().unwrap()
+    let start = match location {
+        Some(location) => fs::canonicalize(location).expect("invalid location provided"),
+        None => env::current_dir().unwrap(),
     };
 
     WalkDir::new(start.as_path())
@@ -41,7 +41,7 @@ fn find_migrations_file_names(
                 .parent()
                 .filter(|parent| {
                     //if parent_dir was not provided check if file is on a migrations dir
-                    parent_dir.is_some() || parent.ends_with("migrations")
+                    location.is_some() || parent.ends_with("migrations")
                 })
                 .is_some()
         })
@@ -149,7 +149,7 @@ pub fn embed_migrations(input: TokenStream) -> TokenStream {
 
     let fnq = migration_fn_quoted(_migrations);
     (quote! {
-        mod migrations {
+        pub mod migrations {
             #fnq
         }
     })
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!("V2__second", mods[1]);
     }
 
-     #[test]
+    #[test]
     fn finds_mod_migrations_in_parent_dir() {
         let tmp_dir = TempDir::new_in(".", "keg").unwrap();
         let mod1 = tmp_dir.path().join("V1__first.rs");
@@ -193,7 +193,7 @@ mod tests {
         assert_eq!("V2__second", mods[1]);
     }
 
-   #[test]
+    #[test]
     fn ignores_mod_files_without_migration_regex_match() {
         let tmp_dir = TempDir::new_in(".", "keg").unwrap();
         let _migrations_dir = fs::create_dir(tmp_dir.path().join("migrations")).unwrap();

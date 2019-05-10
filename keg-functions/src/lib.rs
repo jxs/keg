@@ -3,7 +3,13 @@ use std::cmp::Ordering;
 use std::error::Error;
 
 #[cfg(feature = "rusqlite")]
-pub mod sqlite;
+pub mod rusqlite;
+
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
+#[cfg(feature = "mysql")]
+pub mod mysql;
 
 pub fn file_match_re() -> Regex {
     Regex::new(r"([V])([\d|\.]+)__(\w+)").unwrap()
@@ -82,7 +88,6 @@ impl PartialOrd for Migration {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct MigrationMeta {
     name: String,
@@ -104,13 +109,11 @@ where
     T: Transaction,
     T::Error: Error + Send + Sync + 'static,
 {
-    // type Error: From<T::Error>;
-
     fn assert_migrations_table(transaction: &mut T) -> Result<(), MigrationError> {
         transaction
             .execute(
                 "CREATE TABLE IF NOT EXISTS keg_schema_history( \
-                 version INTEGER PRIMARY KEY,\
+                 version BIGINT PRIMARY KEY,\
                  name VARCHAR(255),\
                  installed_on DATETIME);",
             )
@@ -123,13 +126,15 @@ where
     }
 
     fn get_current_version(transaction: &mut T) -> Result<Option<MigrationMeta>, MigrationError> {
-        transaction.get_migration_meta("SELECT version, name FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)").map_err(|err| {
-            MigrationError {
+        transaction
+            .get_migration_meta(
+                "SELECT version, name FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+            )
+            .map_err(|err| MigrationError {
                 msg: "error getting current schema history version".into(),
                 kind: MigrationErrorKind::SqlError,
                 cause: Some(Box::new(err)),
-            }
-        })
+            })
     }
 
     fn migrate(&'a mut self, migrations: &[Migration]) -> Result<(), MigrationError> {
