@@ -17,7 +17,7 @@ impl<'a> Transaction for PgTransaction<'a> {
         match rows.into_iter().next() {
             None => Ok(None),
             Some(row) => {
-                let version: i64 = row.get(0);
+                let version: i32 = row.get(0);
                 let _installed_on: String = row.get(2);
                 let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
 

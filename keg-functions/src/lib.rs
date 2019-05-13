@@ -115,7 +115,7 @@ where
         transaction
             .execute(
                 "CREATE TABLE IF NOT EXISTS keg_schema_history( \
-                 version BIGINT PRIMARY KEY,\
+                 version INTEGER PRIMARY KEY,\
                  name VARCHAR(255),\
                  installed_on VARCHAR(255));",
             )

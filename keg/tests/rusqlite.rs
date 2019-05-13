@@ -1,6 +1,7 @@
 mod rusqlite {
     use ttrusqlite::{Connection, NO_PARAMS};
     use chrono::{DateTime, Local};
+    use keg::{Migration, Connection as _};
 
     mod embedded {
         use keg::embed_migrations;
@@ -129,5 +130,23 @@ mod rusqlite {
             )
             .unwrap();
         assert_eq!(Local::today(), installed_on.date());
+    }
+
+    #[test]
+    fn applies_new_migration() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        mod_migrations::migrations::run(&mut conn).unwrap();
+        let migration = Migration::new("V4__add_year_field_to_cars", &"ALTER TABLE cars ADD year INTEGER;").unwrap();
+        conn.migrate(&[migration]).unwrap();
+
+        let current: u32 = conn
+            .query_row(
+                "SELECT MAX(version) FROM keg_schema_history",
+                NO_PARAMS,
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(4, current);
     }
 }
