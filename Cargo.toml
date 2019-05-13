@@ -2,5 +2,6 @@
 members = [
     "keg-functions",
     "keg-macros",
-    "keg"
+    "keg",
+    "keg/tests/mod_migrations"
 ]

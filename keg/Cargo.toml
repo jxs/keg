@@ -10,6 +10,19 @@ rusqlite = ["keg-functions/rusqlite"]
 postgres = ["keg-functions/postgres"]
 mysql = ["keg-functions/mysql"]
 
+#testing features
+trusqlite = ["keg-functions/rusqlite", "mod_migrations/sqlite"]
+tpostgres = ["keg-functions/postgres", "mod_migrations/postgresql"]
+tmysql = ["keg-functions/mysql", "mod_migrations/mysql"]
+
 [dependencies]
-keg-functions= {path="../keg-functions"}
-keg-macros= {path="../keg-macros"}
+keg-functions= {path = "../keg-functions"}
+keg-macros= {path = "../keg-macros"}
+
+[dev-dependencies]
+ttrusqlite = {package = "rusqlite", version = "0.18.0"}
+ttpostgres = {package = "postgres", version = "0.15"}
+ttmysql = {package = "mysql", version = "16.0"}
+
+barrel = "0.5.3"
+mod_migrations = {path = "./tests/mod_migrations"}
