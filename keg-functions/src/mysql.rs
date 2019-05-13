@@ -1,5 +1,6 @@
 use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Transaction};
 use mysql::{error::Error, params::Params, Conn, IsolationLevel, Transaction as MTransaction};
+use chrono::{DateTime, Local};
 
 impl<'a> Transaction for MTransaction<'a> {
     type Error = Error;
@@ -15,9 +16,13 @@ impl<'a> Transaction for MTransaction<'a> {
             None => Ok(None),
             Some(Ok(row)) => {
                 let version: i64 = row.get(0).unwrap();
+                let _installed_on: String = row.get(2).unwrap();
+                let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
+
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1).unwrap(),
+                    installed_on
                 }))
             }
             Some(Err(err)) => Err(err),

@@ -1,6 +1,7 @@
 use regex::Regex;
 use std::cmp::Ordering;
 use std::error::Error;
+use chrono::{DateTime, Local};
 
 #[cfg(feature = "rusqlite")]
 pub mod rusqlite;
@@ -92,6 +93,7 @@ impl PartialOrd for Migration {
 pub struct MigrationMeta {
     name: String,
     version: usize,
+    installed_on: DateTime<Local>
 }
 
 pub trait Transaction {
@@ -115,7 +117,7 @@ where
                 "CREATE TABLE IF NOT EXISTS keg_schema_history( \
                  version BIGINT PRIMARY KEY,\
                  name VARCHAR(255),\
-                 installed_on DATETIME);",
+                 installed_on VARCHAR(255));",
             )
             .map_err(|err| MigrationError {
                 msg: "could not create schema history table".into(),
@@ -128,7 +130,7 @@ where
     fn get_current_version(transaction: &mut T) -> Result<Option<MigrationMeta>, MigrationError> {
         transaction
             .get_migration_meta(
-                "SELECT version, name FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+                "SELECT version, name, installed_on FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
             )
             .map_err(|err| MigrationError {
                 msg: "error getting current schema history version".into(),
@@ -143,6 +145,7 @@ where
         let current = Self::get_current_version(&mut transaction)?.unwrap_or(MigrationMeta {
             name: "".into(),
             version: 0,
+            installed_on: Local::now()
         });
         log::debug!("current migration: {}", current.version);
         let mut migrations = migrations
@@ -170,8 +173,8 @@ where
 
             transaction
                 .execute(&format!(
-                    "INSERT INTO keg_schema_history (version, name) VALUES ({}, '{}')",
-                    migration.version, migration.name
+                    "INSERT INTO keg_schema_history (version, name, installed_on) VALUES ({}, '{}', '{}')",
+                    migration.version, migration.name, Local::now().to_rfc3339()
                 ))
                 .map_err(|err| MigrationError {
                     msg: format!(

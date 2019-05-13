@@ -26,3 +26,4 @@ ttmysql = {package = "mysql", version = "16.0"}
 
 barrel = "0.5.3"
 mod_migrations = {path = "./tests/mod_migrations"}
+chrono = "0.4.6"

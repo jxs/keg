@@ -1,5 +1,6 @@
 mod rusqlite {
     use ttrusqlite::{Connection, NO_PARAMS};
+    use chrono::{DateTime, Local};
 
     mod embedded {
         use keg::embed_migrations;
@@ -54,6 +55,18 @@ mod rusqlite {
             )
             .unwrap();
         assert_eq!(3, current);
+
+        let installed_on: DateTime<Local> = conn
+            .query_row(
+                "SELECT installed_on FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+                NO_PARAMS,
+                |row| {
+                    let _installed_on: String = row.get(0).unwrap();
+                    Ok(DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local))
+                }
+            )
+            .unwrap();
+        assert_eq!(Local::today(), installed_on.date());
     }
 
     #[test]
@@ -104,5 +117,17 @@ mod rusqlite {
             )
             .unwrap();
         assert_eq!(3, current);
+
+        let installed_on: DateTime<Local> = conn
+            .query_row(
+                "SELECT installed_on FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+                NO_PARAMS,
+                |row| {
+                    let _installed_on: String = row.get(0).unwrap();
+                    Ok(DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local))
+                }
+            )
+            .unwrap();
+        assert_eq!(Local::today(), installed_on.date());
     }
 }

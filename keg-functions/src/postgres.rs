@@ -2,6 +2,7 @@ use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Trans
 use postgres::{
     transaction::Transaction as PgTransaction, Connection as PgConnection, Error as PgError,
 };
+use chrono::{DateTime, Local};
 
 impl<'a> Transaction for PgTransaction<'a> {
     type Error = PgError;
@@ -17,9 +18,13 @@ impl<'a> Transaction for PgTransaction<'a> {
             None => Ok(None),
             Some(row) => {
                 let version: i64 = row.get(0);
+                let _installed_on: String = row.get(2);
+                let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
+
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1),
+                    installed_on
                 }))
             }
         }
