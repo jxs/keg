@@ -1,5 +1,5 @@
 use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Transaction};
-use mysql::{error::Error, params::Params, Conn, IsolationLevel, Transaction as MTransaction};
+use mysql::{error::Error, params::Params, Conn, PooledConn, IsolationLevel, Transaction as MTransaction};
 use chrono::{DateTime, Local};
 
 impl<'a> Transaction for MTransaction<'a> {
@@ -36,7 +36,18 @@ impl<'a> Transaction for MTransaction<'a> {
 
 impl<'a> Connection<'a, MTransaction<'a>> for Conn {
     fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
-        self.start_transaction(true, Some(IsolationLevel::RepeatableRead), Some(false))
+        self.start_transaction(true, Some(IsolationLevel::RepeatableRead),None)
+            .map_err(|err| MigrationError {
+                msg: "error starting transaction".into(),
+                kind: MigrationErrorKind::SqlError,
+                cause: Some(Box::new(err)),
+            })
+    }
+}
+
+impl<'a> Connection<'a, MTransaction<'a>> for PooledConn {
+    fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
+        self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)
             .map_err(|err| MigrationError {
                 msg: "error starting transaction".into(),
                 kind: MigrationErrorKind::SqlError,

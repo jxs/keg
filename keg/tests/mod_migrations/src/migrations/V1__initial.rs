@@ -7,7 +7,7 @@ use barrel::backend::Sqlite as Sql;
 use barrel::backend::Pg as Sql;
 
 #[cfg(feature = "mysql")]
-use barrel::backend::Mysql as Sql;
+use barrel::backend::MySql as Sql;
 
 pub fn migration() -> String {
     let mut m = Migration::new();

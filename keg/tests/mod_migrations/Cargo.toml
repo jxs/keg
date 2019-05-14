@@ -11,4 +11,4 @@ mysql = ["barrel/mysql"]
 
 [dependencies]
 keg = {path = "../../../keg"}
-barrel = {version = "0.5.3", features=["sqlite3"]}
+barrel = {version = "0.5.3", optional = true}
