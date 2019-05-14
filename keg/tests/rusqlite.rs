@@ -138,15 +138,17 @@ mod rusqlite {
 
         mod_migrations::migrations::run(&mut conn).unwrap();
         let migration = Migration::new("V4__add_year_field_to_cars", &"ALTER TABLE cars ADD year INTEGER;").unwrap();
+        let mchecksum = migration.checksum();
         conn.migrate(&[migration]).unwrap();
 
-        let current: u32 = conn
+        let (current, checksum): (u32, String) = conn
             .query_row(
-                "SELECT MAX(version) FROM keg_schema_history",
+                "SELECT version, checksum FROM keg_schema_history where version = (SELECT MAX(version) from keg_schema_history)",
                 NO_PARAMS,
-                |row| row.get(0),
+                |row| Ok((row.get(0).unwrap(), row.get(1).unwrap())),
             )
             .unwrap();
         assert_eq!(4, current);
+        assert_eq!(mchecksum.to_string(), checksum);
     }
 }

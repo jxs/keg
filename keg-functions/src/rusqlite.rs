@@ -21,7 +21,8 @@ impl<'a> Transaction for RqlTransaction<'a> {
             Ok(MigrationMeta {
                 version: version as usize,
                 name: row.get(1)?,
-                installed_on 
+                installed_on,
+                checksum: row.get(3)?
             })
         })
         .optional()

@@ -22,7 +22,8 @@ impl<'a> Transaction for MTransaction<'a> {
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1).unwrap(),
-                    installed_on
+                    installed_on,
+                    checksum: row.get(3).unwrap()
                 }))
             }
             Some(Err(err)) => Err(err),
