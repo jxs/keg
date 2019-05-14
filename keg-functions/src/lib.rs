@@ -1,6 +1,8 @@
 use regex::Regex;
 use std::cmp::Ordering;
 use std::error::Error;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use chrono::{DateTime, Local};
 
 #[cfg(feature = "rusqlite")]
@@ -20,7 +22,7 @@ lazy_static::lazy_static! {
     static ref RE: regex::Regex = file_match_re();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Migration {
     name: String,
     version: usize,
@@ -67,6 +69,12 @@ impl Migration {
             sql: sql.into(),
         })
     }
+
+    pub fn checksum(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 impl Eq for Migration {}
@@ -93,7 +101,8 @@ impl PartialOrd for Migration {
 pub struct MigrationMeta {
     name: String,
     version: usize,
-    installed_on: DateTime<Local>
+    installed_on: DateTime<Local>,
+    checksum: String
 }
 
 pub trait Transaction {
@@ -117,7 +126,8 @@ where
                 "CREATE TABLE IF NOT EXISTS keg_schema_history( \
                  version INTEGER PRIMARY KEY,\
                  name VARCHAR(255),\
-                 installed_on VARCHAR(255));",
+                 installed_on VARCHAR(255),
+                 checksum VARCHAR(255));",
             )
             .map_err(|err| MigrationError {
                 msg: "could not create schema history table".into(),
@@ -130,7 +140,7 @@ where
     fn get_current_version(transaction: &mut T) -> Result<Option<MigrationMeta>, MigrationError> {
         transaction
             .get_migration_meta(
-                "SELECT version, name, installed_on FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+                "SELECT version, name, installed_on, checksum FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
             )
             .map_err(|err| MigrationError {
                 msg: "error getting current schema history version".into(),
@@ -145,7 +155,8 @@ where
         let current = Self::get_current_version(&mut transaction)?.unwrap_or(MigrationMeta {
             name: "".into(),
             version: 0,
-            installed_on: Local::now()
+            installed_on: Local::now(),
+            checksum: "".into()
         });
         log::debug!("current migration: {}", current.version);
         let mut migrations = migrations
@@ -173,8 +184,8 @@ where
 
             transaction
                 .execute(&format!(
-                    "INSERT INTO keg_schema_history (version, name, installed_on) VALUES ({}, '{}', '{}')",
-                    migration.version, migration.name, Local::now().to_rfc3339()
+                    "INSERT INTO keg_schema_history (version, name, installed_on, checksum) VALUES ({}, '{}', '{}', '{}')",
+                    migration.version, migration.name, Local::now().to_rfc3339(), migration.checksum().to_string()
                 ))
                 .map_err(|err| MigrationError {
                     msg: format!(

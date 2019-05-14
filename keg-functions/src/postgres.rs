@@ -24,7 +24,8 @@ impl<'a> Transaction for PgTransaction<'a> {
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1),
-                    installed_on
+                    installed_on,
+                    checksum: row.get(3)
                 }))
             }
         }
