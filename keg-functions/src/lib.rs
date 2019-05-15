@@ -1,9 +1,14 @@
+mod error;
+
+use chrono::{DateTime, Local};
 use regex::Regex;
 use std::cmp::Ordering;
-use std::error::Error;
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
-use chrono::{DateTime, Local};
+use std::error::Error;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+
+pub use error::{MigrationError, WrapTransactionError};
 
 #[cfg(feature = "rusqlite")]
 pub mod rusqlite;
@@ -29,38 +34,15 @@ pub struct Migration {
     sql: String,
 }
 
-#[derive(Debug)]
-pub struct MigrationError {
-    msg: String,
-    kind: MigrationErrorKind,
-    cause: Option<Box<dyn Error + Sync + Send>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MigrationErrorKind {
-    InvalidName,
-    InvalidVersion,
-    SqlError,
-}
-
 impl Migration {
     pub fn new(name: &str, sql: &str) -> Result<Migration, MigrationError> {
         let captures = RE
             .captures(name)
             .filter(|caps| caps.len() == 4)
-            .ok_or(MigrationError {
-                msg: format!(
-                    "{}: migration name must be in the format V{{number}}__{{name}}",
-                    name
-                ),
-                kind: MigrationErrorKind::InvalidName,
-                cause: None,
-            })?;
-        let version = captures[2].parse().map_err(|_| MigrationError {
-            msg: format!("{:?}: migration number must be a valid integer", captures),
-            kind: MigrationErrorKind::InvalidVersion,
-            cause: None,
-        })?;
+            .ok_or(MigrationError::InvalidName)?;
+        let version = captures[2]
+            .parse()
+            .map_err(|_| MigrationError::InvalidVersion)?;
 
         let name = (&captures[3]).into();
         Ok(Migration {
@@ -74,6 +56,12 @@ impl Migration {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish()
+    }
+}
+
+impl fmt::Display for Migration {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(fmt, "V{}__{}", self.version, self.name)
     }
 }
 
@@ -102,11 +90,11 @@ pub struct MigrationMeta {
     name: String,
     version: usize,
     installed_on: DateTime<Local>,
-    checksum: String
+    checksum: String,
 }
 
 pub trait Transaction {
-    type Error;
+    type Error: Error + Send + Sync + 'static;
 
     fn execute(&mut self, query: &str) -> Result<usize, Self::Error>;
 
@@ -118,7 +106,6 @@ pub trait Transaction {
 pub trait Connection<'a, T>
 where
     T: Transaction,
-    T::Error: Error + Send + Sync + 'static,
 {
     fn assert_migrations_table(transaction: &mut T) -> Result<(), MigrationError> {
         transaction
@@ -129,11 +116,7 @@ where
                  installed_on VARCHAR(255),
                  checksum VARCHAR(255));",
             )
-            .map_err(|err| MigrationError {
-                msg: "could not create schema history table".into(),
-                kind: MigrationErrorKind::SqlError,
-                cause: Some(Box::new(err)),
-            })?;
+            .transaction_err("error creating schema history table")?;
         Ok(())
     }
 
@@ -142,11 +125,7 @@ where
             .get_migration_meta(
                 "SELECT version, name, installed_on, checksum FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
             )
-            .map_err(|err| MigrationError {
-                msg: "error getting current schema history version".into(),
-                kind: MigrationErrorKind::SqlError,
-                cause: Some(Box::new(err)),
-            })
+            .transaction_err("error getting current schema history version")
     }
 
     fn migrate(&'a mut self, migrations: &[Migration]) -> Result<(), MigrationError> {
@@ -156,7 +135,7 @@ where
             name: "".into(),
             version: 0,
             installed_on: Local::now(),
-            checksum: "".into()
+            checksum: "".into(),
         });
         log::debug!("current migration: {}", current.version);
         let mut migrations = migrations
@@ -173,35 +152,19 @@ where
             log::debug!("applying migration: {}", migration.name);
             transaction
                 .execute(&migration.sql)
-                .map_err(|err| MigrationError {
-                    msg: format!(
-                        "error applying migration V{}__{}",
-                        migration.version, migration.name
-                    ),
-                    kind: MigrationErrorKind::SqlError,
-                    cause: Some(Box::new(err)),
-                })?;
+                .transaction_err(&format!("error applying migration {}", migration))?;
 
             transaction
                 .execute(&format!(
                     "INSERT INTO keg_schema_history (version, name, installed_on, checksum) VALUES ({}, '{}', '{}', '{}')",
                     migration.version, migration.name, Local::now().to_rfc3339(), migration.checksum().to_string()
                 ))
-                .map_err(|err| MigrationError {
-                    msg: format!(
-                        "error updating schema history to version: {}",
-                        migration.version
-                    ),
-                    kind: MigrationErrorKind::SqlError,
-                    cause: Some(Box::new(err)),
-                })?;
+                .transaction_err(&format!("error updating schema history to migration: {}", migration))?;
         }
 
-        transaction.commit().map_err(|err| MigrationError {
-            msg: "error commiting transaction".into(),
-            kind: MigrationErrorKind::SqlError,
-            cause: Some(Box::new(err)),
-        })?;
+        transaction
+            .commit()
+            .transaction_err("error committing transaction")?;
 
         Ok(())
     }

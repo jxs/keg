@@ -1,6 +1,8 @@
-use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Transaction};
-use mysql::{error::Error, params::Params, Conn, PooledConn, IsolationLevel, Transaction as MTransaction};
+use super::{Connection, MigrationError, MigrationMeta, Transaction, WrapTransactionError};
 use chrono::{DateTime, Local};
+use mysql::{
+    error::Error, params::Params, Conn, IsolationLevel, PooledConn, Transaction as MTransaction,
+};
 
 impl<'a> Transaction for MTransaction<'a> {
     type Error = Error;
@@ -17,13 +19,15 @@ impl<'a> Transaction for MTransaction<'a> {
             Some(Ok(row)) => {
                 let version: i64 = row.get(0).unwrap();
                 let _installed_on: String = row.get(2).unwrap();
-                let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
+                let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
+                    .unwrap()
+                    .with_timezone(&Local);
 
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1).unwrap(),
                     installed_on,
-                    checksum: row.get(3).unwrap()
+                    checksum: row.get(3).unwrap(),
                 }))
             }
             Some(Err(err)) => Err(err),
@@ -37,22 +41,14 @@ impl<'a> Transaction for MTransaction<'a> {
 
 impl<'a> Connection<'a, MTransaction<'a>> for Conn {
     fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
-        self.start_transaction(true, Some(IsolationLevel::RepeatableRead),None)
-            .map_err(|err| MigrationError {
-                msg: "error starting transaction".into(),
-                kind: MigrationErrorKind::SqlError,
-                cause: Some(Box::new(err)),
-            })
+        self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)
+            .transaction_err("error starting transaction")
     }
 }
 
 impl<'a> Connection<'a, MTransaction<'a>> for PooledConn {
     fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
         self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)
-            .map_err(|err| MigrationError {
-                msg: "error starting transaction".into(),
-                kind: MigrationErrorKind::SqlError,
-                cause: Some(Box::new(err)),
-            })
+            .transaction_err("error starting transaction")
     }
 }

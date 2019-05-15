@@ -1,9 +1,9 @@
-use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Transaction};
+use super::{Connection, MigrationError, MigrationMeta, Transaction, WrapTransactionError};
+use chrono::{DateTime, Local};
 use rusqlite::{
     Connection as RqlConnection, Error as RqlError, OptionalExtension,
     Transaction as RqlTransaction, NO_PARAMS,
 };
-use chrono::{DateTime, Local};
 
 impl<'a> Transaction for RqlTransaction<'a> {
     type Error = RqlError;
@@ -17,12 +17,14 @@ impl<'a> Transaction for RqlTransaction<'a> {
             //FromSql not implemented for usize
             let version: isize = row.get(0)?;
             let _installed_on: String = row.get(2)?;
-            let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
+            let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
+                .unwrap()
+                .with_timezone(&Local);
             Ok(MigrationMeta {
                 version: version as usize,
                 name: row.get(1)?,
                 installed_on,
-                checksum: row.get(3)?
+                checksum: row.get(3)?,
             })
         })
         .optional()
@@ -35,10 +37,7 @@ impl<'a> Transaction for RqlTransaction<'a> {
 
 impl<'a> Connection<'a, RqlTransaction<'a>> for RqlConnection {
     fn transaction(&'a mut self) -> Result<RqlTransaction<'a>, MigrationError> {
-        self.transaction().map_err(|err| MigrationError {
-            msg: "error starting transaction".into(),
-            kind: MigrationErrorKind::SqlError,
-            cause: Some(Box::new(err)),
-        })
+        self.transaction()
+            .transaction_err("error starting transaction")
     }
 }
