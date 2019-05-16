@@ -1,7 +1,7 @@
 mod rusqlite {
-    use ttrusqlite::{Connection, NO_PARAMS};
     use chrono::{DateTime, Local};
-    use keg::{Migration, Connection as _};
+    use keg::{Connection as _, Migration};
+    use ttrusqlite::{Connection, NO_PARAMS};
 
     mod embedded {
         use keg::embed_migrations;
@@ -137,7 +137,11 @@ mod rusqlite {
         let mut conn = Connection::open_in_memory().unwrap();
 
         mod_migrations::migrations::run(&mut conn).unwrap();
-        let migration = Migration::new("V4__add_year_field_to_cars", &"ALTER TABLE cars ADD year INTEGER;").unwrap();
+        let migration = Migration::new(
+            "V4__add_year_field_to_cars",
+            &"ALTER TABLE cars ADD year INTEGER;",
+        )
+        .unwrap();
         let mchecksum = migration.checksum();
         conn.migrate(&[migration]).unwrap();
 

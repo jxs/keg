@@ -1,8 +1,8 @@
-use super::{Connection, MigrationError, MigrationErrorKind, MigrationMeta, Transaction};
+use super::{Connection, MigrationError, MigrationMeta, Transaction, WrapTransactionError};
+use chrono::{DateTime, Local};
 use postgres::{
     transaction::Transaction as PgTransaction, Connection as PgConnection, Error as PgError,
 };
-use chrono::{DateTime, Local};
 
 impl<'a> Transaction for PgTransaction<'a> {
     type Error = PgError;
@@ -19,13 +19,15 @@ impl<'a> Transaction for PgTransaction<'a> {
             Some(row) => {
                 let version: i32 = row.get(0);
                 let _installed_on: String = row.get(2);
-                let installed_on = DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local);
+                let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
+                    .unwrap()
+                    .with_timezone(&Local);
 
                 Ok(Some(MigrationMeta {
                     version: version as usize,
                     name: row.get(1),
                     installed_on,
-                    checksum: row.get(3)
+                    checksum: row.get(3),
                 }))
             }
         }
@@ -38,10 +40,6 @@ impl<'a> Transaction for PgTransaction<'a> {
 
 impl<'a> Connection<'a, PgTransaction<'a>> for PgConnection {
     fn transaction(&'a mut self) -> Result<PgTransaction<'a>, MigrationError> {
-        PgConnection::transaction(self).map_err(|err| MigrationError {
-            msg: "error starting transaction".into(),
-            kind: MigrationErrorKind::SqlError,
-            cause: Some(Box::new(err)),
-        })
+        PgConnection::transaction(self).transaction_err("error starting transaction")
     }
 }

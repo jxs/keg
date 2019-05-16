@@ -1,7 +1,7 @@
 mod postgres {
-    use ttpostgres::{Connection, TlsMode};
     use chrono::{DateTime, Local};
-    use keg::{Migration, Connection as _};
+    use keg::{Connection as _, Migration};
+    use ttpostgres::{Connection, TlsMode};
 
     mod embedded {
         use keg::embed_migrations;
@@ -9,13 +9,21 @@ mod postgres {
     }
 
     fn clean_database() {
-        let conn =
-            Connection::connect("postgres://postgres@localhost:5432/template1", TlsMode::None)
-            .unwrap();
+        let conn = Connection::connect(
+            "postgres://postgres@localhost:5432/template1",
+            TlsMode::None,
+        )
+        .unwrap();
 
-        conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres'", &[]).expect("drop users");
-        conn.execute("DROP DATABASE postgres", &[]).expect("drop schema");
-        conn.execute("CREATE DATABASE POSTGRES", &[]).expect("create schema");
+        conn.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres'",
+            &[],
+        )
+        .unwrap();
+        conn.execute("DROP DATABASE postgres", &[])
+            .unwrap();
+        conn.execute("CREATE DATABASE POSTGRES", &[])
+            .unwrap();
     }
 
     #[test]
@@ -46,8 +54,11 @@ mod postgres {
             "INSERT INTO persons (name, city) VALUES ($1, $2)",
             &[&"John Legend", &"New York"],
         )
-        .expect("query query");
-        for row in &conn.query("SELECT name, city FROM persons", &[]).expect("query query query") {
+        .unwrap();
+        for row in &conn
+            .query("SELECT name, city FROM persons", &[])
+            .unwrap()
+        {
             let name: String = row.get(0);
             let city: String = row.get(1);
             assert_eq!("John Legend", name);
@@ -152,10 +163,14 @@ mod postgres {
     fn applies_new_migration() {
         let mut conn =
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
-            .unwrap();
+                .unwrap();
 
         mod_migrations::migrations::run(&mut conn).unwrap();
-        let migration = Migration::new("V4__add_year_field_to_cars", &"ALTER TABLE cars ADD year INTEGER;").unwrap();
+        let migration = Migration::new(
+            "V4__add_year_field_to_cars",
+            &"ALTER TABLE cars ADD year INTEGER;",
+        )
+        .unwrap();
         let mchecksum = migration.checksum();
         conn.migrate(&[migration]).unwrap();
 
