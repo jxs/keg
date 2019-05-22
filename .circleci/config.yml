@@ -20,13 +20,15 @@ save_deps: &SAVE_DEPS
 
 version: 2.1
 jobs:
-  build-test-macros:
+  build-clippy-test-macros:
     docker:
       - image: rust:1.34.1-stretch
     steps:
       - checkout
+      - run: rustup component add clippy --toolchain 1.34.1-x86_64-unknown-linux-gnu
+      - run: RUSTFLAGS="-D warnings" cargo build -p keg --all-features
       - run: cargo test -p keg-macros
-      - run: cargo build -p keg --all-features
+      - run: RUSTFLAGS="-D warnings" cargo clippy -p keg -p keg-functions -p keg-macros
   test-sqlite:
     docker:
       - image: rust:1.34.1-stretch
@@ -59,7 +61,7 @@ workflows:
   version: 2
   build_and_test:
     jobs:
-      - build-test-macros
+      - build-clippy-test-macros
       - test-sqlite
       - test-postgres
       - test-mysql

@@ -27,7 +27,7 @@ lazy_static::lazy_static! {
     static ref RE: regex::Regex = file_match_re();
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Migration {
     name: String,
     version: usize,
@@ -54,7 +54,9 @@ impl Migration {
 
     pub fn checksum(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
+        self.name.hash(&mut hasher);
+        self.version.hash(&mut hasher);
+        self.sql.hash(&mut hasher);
         hasher.finish()
     }
 }
