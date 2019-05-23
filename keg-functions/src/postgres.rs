@@ -1,45 +1,96 @@
-use super::{Connection, MigrationError, MigrationMeta, Transaction, WrapTransactionError};
+use crate::{
+    CommitTransaction, DefaultQueries, MigrateMultiple, MigrateSingle, MigrationError,
+    MigrationVersion, Query, Transaction, WrapTransactionError, ExecuteMultiple
+};
 use chrono::{DateTime, Local};
 use postgres::{
     transaction::Transaction as PgTransaction, Connection as PgConnection, Error as PgError,
 };
 
+fn query_migration_version(transaction: &PgTransaction, query: &str) -> Result<Option<MigrationVersion>, PgError> {
+    let rows = transaction.query(query, &[])?;
+    match rows.into_iter().next() {
+        None => Ok(None),
+        Some(row) => {
+            let version: i32 = row.get(0);
+            let _installed_on: String = row.get(2);
+            let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
+                .unwrap()
+                .with_timezone(&Local);
+
+            Ok(Some(MigrationVersion {
+                version: version as usize,
+                name: row.get(1),
+                installed_on,
+                checksum: row.get(3),
+            }))
+        }
+    }
+}
+
 impl<'a> Transaction for PgTransaction<'a> {
     type Error = PgError;
 
     fn execute(&mut self, query: &str) -> Result<usize, Self::Error> {
-        let result = PgTransaction::execute(self, query, &[])?;
-        Ok(result as usize)
+        let count = PgTransaction::execute(self, query, &[])?;
+        Ok(count as usize)
     }
+}
 
-    fn get_migration_meta(&mut self, query: &str) -> Result<Option<MigrationMeta>, Self::Error> {
-        let rows = self.query(query, &[])?;
-        match rows.into_iter().next() {
-            None => Ok(None),
-            Some(row) => {
-                let version: i32 = row.get(0);
-                let _installed_on: String = row.get(2);
-                let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
-                    .unwrap()
-                    .with_timezone(&Local);
-
-                Ok(Some(MigrationMeta {
-                    version: version as usize,
-                    name: row.get(1),
-                    installed_on,
-                    checksum: row.get(3),
-                }))
-            }
-        }
-    }
-
+impl<'a> CommitTransaction for PgTransaction<'a> {
     fn commit(self) -> Result<(), Self::Error> {
         PgTransaction::commit(self)
     }
 }
 
-impl<'a> Connection<'a, PgTransaction<'a>> for PgConnection {
+impl<'a> Query<MigrationVersion> for PgTransaction<'a> {
+    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+        query_migration_version(self, query)
+    }
+}
+
+impl<'a> DefaultQueries for PgTransaction<'a> {}
+
+impl<'a> MigrateSingle<'a> for PgConnection {
+    type Transaction = PgTransaction<'a>;
+
     fn transaction(&'a mut self) -> Result<PgTransaction<'a>, MigrationError> {
         PgConnection::transaction(self).transaction_err("error starting transaction")
     }
 }
+
+impl Transaction for PgConnection {
+    type Error = PgError;
+
+    fn execute(&mut self, query: &str) -> Result<usize, Self::Error> {
+        let mut transaction = PgConnection::transaction(&self)?;
+        let count = PgTransaction::execute(&mut transaction, query, &[])?;
+        transaction.commit()?;
+        Ok(count as usize)
+    }
+}
+
+impl ExecuteMultiple for PgConnection {
+    fn execute_multiple(&mut self, queries: &[&str]) -> Result<usize, Self::Error> {
+        let mut transaction = PgConnection::transaction(&self)?;
+        let mut count = 0;
+        for query in queries.iter() {
+            count += PgTransaction::execute(&mut transaction, query, &[])?;
+        }
+        transaction.commit()?;
+        Ok(count as usize)
+    }
+}
+
+impl Query<MigrationVersion> for PgConnection {
+    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+        let transaction = PgConnection::transaction(self)?;
+        let version = query_migration_version(&transaction, query)?;
+        transaction.commit()?;
+        Ok(version)
+    }
+}
+
+impl DefaultQueries for PgConnection {}
+
+impl MigrateMultiple for PgConnection {}

@@ -1,6 +1,6 @@
 mod rusqlite {
     use chrono::{DateTime, Local};
-    use keg::{Connection as _, Migration};
+    use keg::{MigrateSingle as _, Migration};
     use ttrusqlite::{Connection, NO_PARAMS};
 
     mod embedded {
@@ -11,7 +11,7 @@ mod rusqlite {
     #[test]
     fn embedded_creates_migration_table() {
         let mut conn = Connection::open_in_memory().unwrap();
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
         let table_name: String = conn
             .query_row(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='keg_schema_history'",
@@ -26,7 +26,27 @@ mod rusqlite {
     fn embedded_applies_migration() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO persons (name, city) VALUES (?, ?)",
+            &[&"John Legend", &"New York"],
+        )
+        .unwrap();
+        let (name, city): (String, String) = conn
+            .query_row("SELECT name, city FROM persons", NO_PARAMS, |row| {
+                Ok((row.get(0).unwrap(), row.get(1).unwrap()))
+            })
+            .unwrap();
+        assert_eq!("John Legend", name);
+        assert_eq!("New York", city);
+    }
+
+    #[test]
+    fn embedded_applies_migration_multiple_transactions() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        embedded::migrations::new().run(&mut conn).unwrap();
 
         conn.execute(
             "INSERT INTO persons (name, city) VALUES (?, ?)",
@@ -46,7 +66,7 @@ mod rusqlite {
     fn embedded_updates_schema_history() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
 
         let current: u32 = conn
             .query_row(
@@ -73,7 +93,7 @@ mod rusqlite {
     #[test]
     fn mod_creates_migration_table() {
         let mut conn = Connection::open_in_memory().unwrap();
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         let table_name: String = conn
             .query_row(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='keg_schema_history'",
@@ -88,7 +108,7 @@ mod rusqlite {
     fn mod_applies_migration() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
 
         conn.execute(
             "INSERT INTO persons (name, city) VALUES (?, ?)",
@@ -108,7 +128,7 @@ mod rusqlite {
     fn mod_updates_schema_history() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
 
         let current: u32 = conn
             .query_row(
@@ -136,7 +156,8 @@ mod rusqlite {
     fn applies_new_migration() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
+
         let migration = Migration::new(
             "V4__add_year_field_to_cars",
             &"ALTER TABLE cars ADD year INTEGER;",

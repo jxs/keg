@@ -1,14 +1,15 @@
 mod error;
+mod traits;
 
-use chrono::{DateTime, Local};
 use regex::Regex;
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
-use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use chrono::{DateTime, Local};
 
 pub use error::{MigrationError, WrapTransactionError};
+pub use traits::{Transaction, DefaultQueries, CommitTransaction, ExecuteMultiple, Query, MigrateSingle, MigrateMultiple};
 
 #[cfg(feature = "rusqlite")]
 pub mod rusqlite;
@@ -88,88 +89,35 @@ impl PartialOrd for Migration {
 }
 
 #[derive(Debug)]
-pub struct MigrationMeta {
+pub struct MigrationVersion {
     name: String,
     version: usize,
     installed_on: DateTime<Local>,
     checksum: String,
 }
 
-pub trait Transaction {
-    type Error: Error + Send + Sync + 'static;
-
-    fn execute(&mut self, query: &str) -> Result<usize, Self::Error>;
-
-    fn get_migration_meta(&mut self, query: &str) -> Result<Option<MigrationMeta>, Self::Error>;
-
-    fn commit(self) -> Result<(), Self::Error>;
+pub struct Runner {
+    multiple: bool,
+    migrations: Vec<Migration>
 }
 
-pub trait Connection<'a, T>
-where
-    T: Transaction,
-{
-    fn assert_migrations_table(transaction: &mut T) -> Result<(), MigrationError> {
-        transaction
-            .execute(
-                "CREATE TABLE IF NOT EXISTS keg_schema_history( \
-                 version INTEGER PRIMARY KEY,\
-                 name VARCHAR(255),\
-                 installed_on VARCHAR(255),
-                 checksum VARCHAR(255));",
-            )
-            .transaction_err("error creating schema history table")?;
+impl Runner {
+    pub fn new(migrations: &[Migration]) -> Runner {
+        Runner {
+            multiple: true,
+            migrations: migrations.to_vec()
+        }
+    }
+    pub fn set_multiple(&mut self, multiple: bool) {
+        self.multiple = multiple;
+    }
+
+    pub fn run<'a, C>(&self, conn: &'a mut C) -> Result<(), MigrationError> where C: MigrateSingle<'a> + MigrateMultiple {
+        if self.multiple {
+            MigrateMultiple::migrate(conn, &self.migrations)?;
+        } else {
+            MigrateSingle::migrate(conn, &self.migrations)?;
+        }
         Ok(())
     }
-
-    fn get_current_version(transaction: &mut T) -> Result<Option<MigrationMeta>, MigrationError> {
-        transaction
-            .get_migration_meta(
-                "SELECT version, name, installed_on, checksum FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
-            )
-            .transaction_err("error getting current schema history version")
-    }
-
-    fn migrate(&'a mut self, migrations: &[Migration]) -> Result<(), MigrationError> {
-        let mut transaction = self.transaction()?;
-        Self::assert_migrations_table(&mut transaction)?;
-        let current = Self::get_current_version(&mut transaction)?.unwrap_or(MigrationMeta {
-            name: "".into(),
-            version: 0,
-            installed_on: Local::now(),
-            checksum: "".into(),
-        });
-        log::debug!("current migration: {}", current.version);
-        let mut migrations = migrations
-            .iter()
-            .filter(|m| m.version > current.version)
-            .collect::<Vec<_>>();
-        migrations.sort();
-
-        if migrations.is_empty() {
-            log::debug!("no migrations to apply");
-        }
-
-        for migration in migrations.iter() {
-            log::debug!("applying migration: {}", migration.name);
-            transaction
-                .execute(&migration.sql)
-                .transaction_err(&format!("error applying migration {}", migration))?;
-
-            transaction
-                .execute(&format!(
-                    "INSERT INTO keg_schema_history (version, name, installed_on, checksum) VALUES ({}, '{}', '{}', '{}')",
-                    migration.version, migration.name, Local::now().to_rfc3339(), migration.checksum().to_string()
-                ))
-                .transaction_err(&format!("error updating schema history to migration: {}", migration))?;
-        }
-
-        transaction
-            .commit()
-            .transaction_err("error committing transaction")?;
-
-        Ok(())
-    }
-
-    fn transaction(&'a mut self) -> Result<T, MigrationError>;
 }
