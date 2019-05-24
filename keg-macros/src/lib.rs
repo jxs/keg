@@ -79,15 +79,14 @@ fn find_migrations_file_names(
 
 fn migration_fn_quoted<T: ToTokens>(_migrations: Vec<T>) -> TokenStream2 {
     let result = quote! {
-        use keg::{Connection, Migration, MigrationError, Transaction};
-        pub fn run<'a, C, T>(conn: &'a mut C) -> Result<(), MigrationError>
-            where C: Connection<'a, T>, T:Transaction, T::Error: std::error::Error + Send + Sync + 'static {
+        use keg::{Migration, Runner};
+        pub fn new() -> Runner {
             let quoted_migrations: Vec<(&str, String)> = vec![#(#_migrations),*];
             let mut migrations: Vec<Migration> = Vec::new();
             for module in quoted_migrations.into_iter() {
                 migrations.push(Migration::new(module.0, &module.1).unwrap());
             }
-            conn.migrate(&migrations)
+            Runner::new(&migrations)
         }
     };
     result
@@ -252,15 +251,14 @@ mod tests {
     fn test_quote_fn() {
         let migs = vec![quote!("V1__first", "valid_sql_file")];
         let expected = concat! {
-            "use keg :: { Connection , Migration , MigrationError , Transaction } ; ",
-            "pub fn run < \'a , C , T > ( conn : & \'a mut C ) -> Result < ( ) , MigrationError > where C : Connection < \'a , T > , T : Transaction , T :: Error : std :: error :: Error + Send + Sync + 'static { ",
+            "use keg :: { Migration , Runner } ; ",
+            "pub fn new ( ) -> Runner { ",
             "let quoted_migrations : Vec < ( & str , String ) > = vec ! [ \"V1__first\" , \"valid_sql_file\" ] ; ",
             "let mut migrations : Vec < Migration > = Vec :: new ( ) ; ",
             "for module in quoted_migrations . into_iter ( ) { ",
             "migrations . push ( Migration :: new ( module . 0 , & module . 1 ) . unwrap ( ) ) ; ",
             "} ",
-            "conn . migrate ( & migrations ) ",
-            "}"
+            "Runner :: new ( & migrations ) }"
         };
         assert_eq!(expected, migration_fn_quoted(migs).to_string());
     }

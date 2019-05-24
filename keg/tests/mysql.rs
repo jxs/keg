@@ -1,6 +1,6 @@
 mod rusqlite {
     use chrono::{DateTime, Local};
-    use keg::{Connection as _, Migration};
+    use keg::{MigrateSingle as _, Migration};
     use ttmysql as my;
 
     mod embedded {
@@ -11,17 +11,15 @@ mod rusqlite {
     fn clean_database() {
         let mut conn = my::Conn::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
 
-        conn.prep_exec("DROP DATABASE keg_test", ())
-            .unwrap();
-        conn.prep_exec("CREATE DATABASE keg_test", ())
-            .unwrap();
+        conn.prep_exec("DROP DATABASE keg_test", ()).unwrap();
+        conn.prep_exec("CREATE DATABASE keg_test", ()).unwrap();
     }
 
     #[test]
     fn embedded_creates_migration_table() {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
         for row in conn
             .query(
                 "SELECT table_name FROM information_schema.tables WHERE table_name='keg_schema_history'"
@@ -39,7 +37,7 @@ mod rusqlite {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
 
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
         conn.prep_exec(
             "INSERT INTO persons (name, city) VALUES (:a, :b)",
             (&"John Legend", &"New York"),
@@ -60,7 +58,7 @@ mod rusqlite {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
 
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
 
         for _row in conn
             .query("SELECT MAX(version) FROM keg_schema_history")
@@ -87,7 +85,7 @@ mod rusqlite {
     fn mod_creates_migration_table() {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         for row in conn
             .query(
                 "SELECT table_name FROM information_schema.tables WHERE table_name='keg_schema_history'"
@@ -105,7 +103,7 @@ mod rusqlite {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         conn.prep_exec(
             "INSERT INTO persons (name, city) VALUES (:a, :b)",
             (&"John Legend", &"New York"),
@@ -126,7 +124,7 @@ mod rusqlite {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
 
         for _row in conn
             .query("SELECT MAX(version) FROM keg_schema_history")
@@ -154,7 +152,7 @@ mod rusqlite {
         let pool = my::Pool::new("mysql://keg:root@localhost:3306/keg_test").unwrap();
         let mut conn = pool.get_conn().unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         let migration = Migration::new(
             "V4__add_year_field_to_cars",
             &"ALTER TABLE cars ADD year INTEGER;",

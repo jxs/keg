@@ -1,6 +1,6 @@
 mod postgres {
     use chrono::{DateTime, Local};
-    use keg::{Connection as _, Migration};
+    use keg::{MigrateSingle as _, Migration};
     use ttpostgres::{Connection, TlsMode};
 
     mod embedded {
@@ -20,10 +20,8 @@ mod postgres {
             &[],
         )
         .unwrap();
-        conn.execute("DROP DATABASE postgres", &[])
-            .unwrap();
-        conn.execute("CREATE DATABASE POSTGRES", &[])
-            .unwrap();
+        conn.execute("DROP DATABASE postgres", &[]).unwrap();
+        conn.execute("CREATE DATABASE POSTGRES", &[]).unwrap();
     }
 
     #[test]
@@ -31,7 +29,7 @@ mod postgres {
         let mut conn =
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
         for row in &conn
             .query(
                 "SELECT table_name FROM information_schema.tables WHERE table_name='keg_schema_history'", &[]
@@ -49,16 +47,13 @@ mod postgres {
         let mut conn =
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
         conn.execute(
             "INSERT INTO persons (name, city) VALUES ($1, $2)",
             &[&"John Legend", &"New York"],
         )
         .unwrap();
-        for row in &conn
-            .query("SELECT name, city FROM persons", &[])
-            .unwrap()
-        {
+        for row in &conn.query("SELECT name, city FROM persons", &[]).unwrap() {
             let name: String = row.get(0);
             let city: String = row.get(1);
             assert_eq!("John Legend", name);
@@ -73,7 +68,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
 
-        embedded::migrations::run(&mut conn).unwrap();
+        embedded::migrations::new().run(&mut conn).unwrap();
 
         for row in &conn
             .query("SELECT MAX(version) FROM keg_schema_history", &[])
@@ -99,7 +94,7 @@ mod postgres {
         let mut conn =
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         for row in &conn
             .query(
                 "SELECT table_name FROM information_schema.tables WHERE table_name='keg_schema_history'", &[]
@@ -118,7 +113,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         conn.execute(
             "INSERT INTO persons (name, city) VALUES ($1, $2)",
             &[&"John Legend", &"New York"],
@@ -139,7 +134,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         for row in &conn
             .query("SELECT MAX(version) FROM keg_schema_history", &[])
             .unwrap()
@@ -165,7 +160,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
 
-        mod_migrations::migrations::run(&mut conn).unwrap();
+        mod_migrations::migrations::new().run(&mut conn).unwrap();
         let migration = Migration::new(
             "V4__add_year_field_to_cars",
             &"ALTER TABLE cars ADD year INTEGER;",
