@@ -8,10 +8,31 @@ mod rusqlite {
         embed_migrations!("./keg/tests/sql_migrations");
     }
 
+    mod broken {
+        use keg::embed_migrations;
+        embed_migrations!("./keg/tests/sql_migrations_broken");
+    }
+
     #[test]
     fn embedded_creates_migration_table() {
         let mut conn = Connection::open_in_memory().unwrap();
         embedded::migrations::new().run(&mut conn).unwrap();
+        let table_name: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='keg_schema_history'",
+                NO_PARAMS,
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!("keg_schema_history", table_name);
+    }
+
+    #[test]
+    fn embedded_creates_migration_table_single_transaction() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        let mut runner = embedded::migrations::new();
+        runner.set_multiple(false);
+        runner.run(&mut conn).unwrap();
         let table_name: String = conn
             .query_row(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='keg_schema_history'",
@@ -43,10 +64,12 @@ mod rusqlite {
     }
 
     #[test]
-    fn embedded_applies_migration_multiple_transactions() {
+    fn embedded_applies_migration_single_transaction() {
         let mut conn = Connection::open_in_memory().unwrap();
 
-        embedded::migrations::new().run(&mut conn).unwrap();
+        let mut runner = embedded::migrations::new();
+        runner.set_multiple(false);
+        runner.run(&mut conn).unwrap();
 
         conn.execute(
             "INSERT INTO persons (name, city) VALUES (?, ?)",
@@ -89,6 +112,54 @@ mod rusqlite {
             .unwrap();
         assert_eq!(Local::today(), installed_on.date());
     }
+
+    #[test]
+    fn embedded_updates_schema_history_single_transaction() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        let mut runner = embedded::migrations::new();
+        runner.set_multiple(false);
+        runner.run(&mut conn).unwrap();
+
+        let current: u32 = conn
+            .query_row(
+                "SELECT MAX(version) FROM keg_schema_history",
+                NO_PARAMS,
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(3, current);
+
+        let installed_on: DateTime<Local> = conn
+            .query_row(
+                "SELECT installed_on FROM keg_schema_history where version=(SELECT MAX(version) from keg_schema_history)",
+                NO_PARAMS,
+                |row| {
+                    let _installed_on: String = row.get(0).unwrap();
+                    Ok(DateTime::parse_from_rfc3339(&_installed_on).unwrap().with_timezone(&Local))
+                }
+            )
+            .unwrap();
+        assert_eq!(Local::today(), installed_on.date());
+    }
+
+    #[test]
+    fn embedded_updates_to_last_working_in_multiple_transaction() {
+        let mut conn = Connection::open_in_memory().unwrap();
+
+        let result = broken::migrations::new().run(&mut conn);
+
+        assert!(result.is_err());
+        let current: u32 = conn
+            .query_row(
+                "SELECT MAX(version) FROM keg_schema_history",
+                NO_PARAMS,
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(2, current);
+    }
+
 
     #[test]
     fn mod_creates_migration_table() {
