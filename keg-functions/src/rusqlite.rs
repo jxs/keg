@@ -1,6 +1,6 @@
 use crate::{
-    CommitTransaction, DefaultQueries, MigrateMultiple, MigrateSingle, MigrationError,
-    MigrationVersion, Query, Transaction, WrapTransactionError, ExecuteMultiple
+    CommitTransaction, DefaultQueries, Migrate, MigrateGrouped, Error,
+    AppliedMigration, Query, Transaction, WrapMigrationError, ExecuteMultiple
 };
 use chrono::{DateTime, Local};
 use rusqlite::{
@@ -8,7 +8,7 @@ use rusqlite::{
     Transaction as RqlTransaction, NO_PARAMS,
 };
 
-fn query_migration_version(transaction: &RqlConnection, query: &str) -> Result<Option<MigrationVersion>, RqlError> {
+fn query_migration_version(transaction: &RqlConnection, query: &str) -> Result<Option<AppliedMigration>, RqlError> {
         transaction.query_row(query, NO_PARAMS, |row| {
             //FromSql not implemented for usize
             let version: isize = row.get(0)?;
@@ -16,7 +16,7 @@ fn query_migration_version(transaction: &RqlConnection, query: &str) -> Result<O
             let installed_on = DateTime::parse_from_rfc3339(&_installed_on)
                 .unwrap()
                 .with_timezone(&Local);
-            let mig = MigrationVersion {
+            let mig = AppliedMigration {
                 version: version as usize,
                 name: row.get(1)?,
                 installed_on,
@@ -42,19 +42,19 @@ impl<'a> CommitTransaction for RqlTransaction<'a> {
     }
 }
 
-impl<'a> Query<MigrationVersion> for RqlTransaction<'a> {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl<'a> Query<AppliedMigration> for RqlTransaction<'a> {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         query_migration_version(self, query)
     }
 }
 
 impl<'a> DefaultQueries for RqlTransaction<'a> {}
 
-impl<'a> MigrateSingle<'a> for RqlConnection {
+impl<'a> MigrateGrouped<'a> for RqlConnection {
     type Transaction = RqlTransaction<'a>;
 
-    fn transaction(&'a mut self) -> Result<Self::Transaction, MigrationError> {
-        RqlConnection::transaction(self).transaction_err("error starting transaction")
+    fn transaction(&'a mut self) -> Result<Self::Transaction, Error> {
+        RqlConnection::transaction(self).migration_err("error starting transaction")
     }
 }
 
@@ -81,8 +81,8 @@ impl ExecuteMultiple for RqlConnection {
     }
 }
 
-impl Query<MigrationVersion> for RqlConnection {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl Query<AppliedMigration> for RqlConnection {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         let transaction = self.transaction()?;
         let version = query_migration_version(&transaction, query)?;
         transaction.commit()?;
@@ -92,4 +92,4 @@ impl Query<MigrationVersion> for RqlConnection {
 
 impl DefaultQueries for RqlConnection {}
 
-impl MigrateMultiple for RqlConnection {}
+impl Migrate for RqlConnection {}

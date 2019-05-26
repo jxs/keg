@@ -8,8 +8,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use chrono::{DateTime, Local};
 
-pub use error::{MigrationError, WrapTransactionError};
-pub use traits::{Transaction, DefaultQueries, CommitTransaction, ExecuteMultiple, Query, MigrateSingle, MigrateMultiple};
+pub use error::{Error, WrapMigrationError};
+pub use traits::{Transaction, DefaultQueries, CommitTransaction, ExecuteMultiple, Query, Migrate, MigrateGrouped};
 
 #[cfg(feature = "rusqlite")]
 pub mod rusqlite;
@@ -29,27 +29,38 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Clone, Debug)]
+enum MigrationPrefix {
+    Versioned,
+}
+#[derive(Clone, Debug)]
 pub struct Migration {
     name: String,
     version: usize,
+    prefix: MigrationPrefix,
     sql: String,
 }
 
 impl Migration {
-    pub fn new(name: &str, sql: &str) -> Result<Migration, MigrationError> {
+    pub fn from_filename(name: &str, sql: &str) -> Result<Migration, Error> {
         let captures = RE
             .captures(name)
             .filter(|caps| caps.len() == 4)
-            .ok_or(MigrationError::InvalidName)?;
+            .ok_or(Error::InvalidName)?;
         let version = captures[2]
             .parse()
-            .map_err(|_| MigrationError::InvalidVersion)?;
+            .map_err(|_| Error::InvalidVersion)?;
 
         let name = (&captures[3]).into();
+        let prefix = match &captures[1] {
+            "V" => MigrationPrefix::Versioned,
+            _ => unreachable!(),
+        };
+
         Ok(Migration {
             name,
             version,
             sql: sql.into(),
+            prefix
         })
     }
 
@@ -89,7 +100,7 @@ impl PartialOrd for Migration {
 }
 
 #[derive(Debug)]
-pub struct MigrationVersion {
+pub struct AppliedMigration {
     name: String,
     version: usize,
     installed_on: DateTime<Local>,
@@ -97,26 +108,26 @@ pub struct MigrationVersion {
 }
 
 pub struct Runner {
-    multiple: bool,
+    grouped: bool,
     migrations: Vec<Migration>
 }
 
 impl Runner {
     pub fn new(migrations: &[Migration]) -> Runner {
         Runner {
-            multiple: true,
+            grouped: false,
             migrations: migrations.to_vec()
         }
     }
-    pub fn set_multiple(&mut self, multiple: bool) {
-        self.multiple = multiple;
+    pub fn set_grouped(&mut self, grouped: bool) {
+        self.grouped = grouped;
     }
 
-    pub fn run<'a, C>(&self, conn: &'a mut C) -> Result<(), MigrationError> where C: MigrateSingle<'a> + MigrateMultiple {
-        if self.multiple {
-            MigrateMultiple::migrate(conn, &self.migrations)?;
+    pub fn run<'a, C>(&self, conn: &'a mut C) -> Result<(), Error> where C: MigrateGrouped<'a> + Migrate {
+        if self.grouped {
+            MigrateGrouped::migrate(conn, &self.migrations)?;
         } else {
-            MigrateSingle::migrate(conn, &self.migrations)?;
+            Migrate::migrate(conn, &self.migrations)?;
         }
         Ok(())
     }
