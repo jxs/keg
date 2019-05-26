@@ -1,16 +1,16 @@
 mod rusqlite {
     use chrono::{DateTime, Local};
-    use keg::{MigrateSingle as _, Migration};
+    use keg::{Migrate as _, Migration};
     use ttrusqlite::{Connection, NO_PARAMS};
 
     mod embedded {
         use keg::embed_migrations;
-        embed_migrations!("./keg/tests/sql_migrations");
+        embed_migrations!("keg/tests/sql_migrations");
     }
 
     mod broken {
         use keg::embed_migrations;
-        embed_migrations!("./keg/tests/sql_migrations_broken");
+        embed_migrations!("keg/tests/sql_migrations_broken");
     }
 
     #[test]
@@ -31,7 +31,7 @@ mod rusqlite {
     fn embedded_creates_migration_table_single_transaction() {
         let mut conn = Connection::open_in_memory().unwrap();
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
         let table_name: String = conn
             .query_row(
@@ -68,7 +68,7 @@ mod rusqlite {
         let mut conn = Connection::open_in_memory().unwrap();
 
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
 
         conn.execute(
@@ -118,7 +118,7 @@ mod rusqlite {
         let mut conn = Connection::open_in_memory().unwrap();
 
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
 
         let current: u32 = conn
@@ -229,7 +229,7 @@ mod rusqlite {
 
         mod_migrations::migrations::new().run(&mut conn).unwrap();
 
-        let migration = Migration::new(
+        let migration = Migration::from_filename(
             "V4__add_year_field_to_cars",
             &"ALTER TABLE cars ADD year INTEGER;",
         )

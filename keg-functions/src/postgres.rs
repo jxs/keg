@@ -1,13 +1,13 @@
 use crate::{
-    CommitTransaction, DefaultQueries, MigrateMultiple, MigrateSingle, MigrationError,
-    MigrationVersion, Query, Transaction, WrapTransactionError, ExecuteMultiple
+    CommitTransaction, DefaultQueries, Migrate, MigrateGrouped, Error,
+    AppliedMigration, Query, Transaction, WrapMigrationError, ExecuteMultiple
 };
 use chrono::{DateTime, Local};
 use postgres::{
     transaction::Transaction as PgTransaction, Connection as PgConnection, Error as PgError,
 };
 
-fn query_migration_version(transaction: &PgTransaction, query: &str) -> Result<Option<MigrationVersion>, PgError> {
+fn query_migration_version(transaction: &PgTransaction, query: &str) -> Result<Option<AppliedMigration>, PgError> {
     let rows = transaction.query(query, &[])?;
     match rows.into_iter().next() {
         None => Ok(None),
@@ -18,7 +18,7 @@ fn query_migration_version(transaction: &PgTransaction, query: &str) -> Result<O
                 .unwrap()
                 .with_timezone(&Local);
 
-            Ok(Some(MigrationVersion {
+            Ok(Some(AppliedMigration {
                 version: version as usize,
                 name: row.get(1),
                 installed_on,
@@ -43,19 +43,19 @@ impl<'a> CommitTransaction for PgTransaction<'a> {
     }
 }
 
-impl<'a> Query<MigrationVersion> for PgTransaction<'a> {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl<'a> Query<AppliedMigration> for PgTransaction<'a> {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         query_migration_version(self, query)
     }
 }
 
 impl<'a> DefaultQueries for PgTransaction<'a> {}
 
-impl<'a> MigrateSingle<'a> for PgConnection {
+impl<'a> MigrateGrouped<'a> for PgConnection {
     type Transaction = PgTransaction<'a>;
 
-    fn transaction(&'a mut self) -> Result<PgTransaction<'a>, MigrationError> {
-        PgConnection::transaction(self).transaction_err("error starting transaction")
+    fn transaction(&'a mut self) -> Result<PgTransaction<'a>, Error> {
+        PgConnection::transaction(self).migration_err("error starting transaction")
     }
 }
 
@@ -82,8 +82,8 @@ impl ExecuteMultiple for PgConnection {
     }
 }
 
-impl Query<MigrationVersion> for PgConnection {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl Query<AppliedMigration> for PgConnection {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         let transaction = PgConnection::transaction(self)?;
         let version = query_migration_version(&transaction, query)?;
         transaction.commit()?;
@@ -93,4 +93,4 @@ impl Query<MigrationVersion> for PgConnection {
 
 impl DefaultQueries for PgConnection {}
 
-impl MigrateMultiple for PgConnection {}
+impl Migrate for PgConnection {}

@@ -1,24 +1,23 @@
-use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-pub enum MigrationError {
+pub enum Error {
     InvalidName,
     InvalidVersion,
-    TransactionError(String, Box<dyn Error + Sync + Send>),
+    TransactionError(String, Box<dyn std::error::Error + Sync + Send>),
 }
 
-impl fmt::Display for MigrationError {
+impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MigrationError::InvalidName => write!(
+            Error::InvalidName => write!(
                 fmt,
                 "migration name must be in the format V{{number}}__{{name}}"
             )?,
-            MigrationError::InvalidVersion => {
+            Error::InvalidVersion => {
                 write!(fmt, "migration version must be a valid integer")?
             }
-            MigrationError::TransactionError(msg, cause) => {
+            Error::TransactionError(msg, cause) => {
                 write!(fmt, "error applying migration {}, {}", msg, cause)?
             }
         }
@@ -26,24 +25,24 @@ impl fmt::Display for MigrationError {
     }
 }
 
-impl Error for MigrationError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            MigrationError::TransactionError(_migration, cause) => Some(&**cause),
+            Error::TransactionError(_migration, cause) => Some(&**cause),
             _ => None,
         }
     }
 }
 
-pub trait WrapTransactionError<T, E> {
-    fn transaction_err(self, msg: &str) -> Result<T, MigrationError>;
+pub trait WrapMigrationError<T, E> {
+    fn migration_err(self, msg: &str) -> Result<T, Error>;
 }
 
-impl<T, E> WrapTransactionError<T, E> for Result<T, E>
+impl<T, E> WrapMigrationError<T, E> for Result<T, E>
 where
-    E: Error + Send + Sync + 'static,
+    E: std::error::Error + Send + Sync + 'static,
 {
-    fn transaction_err(self, msg: &str) -> Result<T, MigrationError> {
-        self.map_err(|err| MigrationError::TransactionError(msg.into(), Box::new(err)))
+    fn migration_err(self, msg: &str) -> Result<T, Error> {
+        self.map_err(|err| Error::TransactionError(msg.into(), Box::new(err)))
     }
 }

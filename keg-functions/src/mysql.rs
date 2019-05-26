@@ -1,13 +1,13 @@
 use crate::{
-    CommitTransaction, DefaultQueries, MigrateMultiple, MigrateSingle, MigrationError,
-    MigrationVersion, Query, Transaction, WrapTransactionError, ExecuteMultiple
+    CommitTransaction, DefaultQueries, Migrate, MigrateGrouped, Error,
+    AppliedMigration, Query, Transaction, WrapMigrationError, ExecuteMultiple
 };
 use chrono::{DateTime, Local};
 use mysql::{
-    error::Error, params::Params, Conn, IsolationLevel, PooledConn, Transaction as MTransaction,
+    error::Error as MError, params::Params, Conn, IsolationLevel, PooledConn, Transaction as MTransaction,
 };
 
-fn query_migration_version(transaction: &mut MTransaction, query: &str) -> Result<Option<MigrationVersion>, Error> {
+fn query_migration_version(transaction: &mut MTransaction, query: &str) -> Result<Option<AppliedMigration>, MError> {
     let rows = transaction.query(query)?;
     match rows.into_iter().next() {
         None => Ok(None),
@@ -18,7 +18,7 @@ fn query_migration_version(transaction: &mut MTransaction, query: &str) -> Resul
                 .unwrap()
                 .with_timezone(&Local);
 
-            Ok(Some(MigrationVersion {
+            Ok(Some(AppliedMigration {
                 version: version as usize,
                 name: row.get(1).unwrap(),
                 installed_on,
@@ -30,7 +30,7 @@ fn query_migration_version(transaction: &mut MTransaction, query: &str) -> Resul
 }
 
 impl<'a> Transaction for MTransaction<'a> {
-    type Error = Error;
+    type Error = MError;
 
     fn execute(&mut self, query: &str) -> Result<usize, Self::Error> {
         let count = self.first_exec(query, Params::Empty)?;
@@ -44,35 +44,35 @@ impl<'a> CommitTransaction for MTransaction<'a> {
     }
 }
 
-impl<'a> Query<MigrationVersion> for MTransaction<'a> {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl<'a> Query<AppliedMigration> for MTransaction<'a> {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         query_migration_version(self, query)
     }
 }
 
 impl<'a> DefaultQueries for MTransaction<'a> {}
 
-impl<'a> MigrateSingle<'a> for Conn {
+impl<'a> MigrateGrouped<'a> for Conn {
     type Transaction = MTransaction<'a>;
 
-    fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
+    fn transaction(&'a mut self) -> Result<MTransaction<'a>, Error> {
         self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)
-            .transaction_err("error starting transaction")
+            .migration_err("error starting transaction")
     }
 }
 
 
-impl<'a> MigrateSingle<'a> for PooledConn {
+impl<'a> MigrateGrouped<'a> for PooledConn {
     type Transaction = MTransaction<'a>;
 
-    fn transaction(&'a mut self) -> Result<MTransaction<'a>, MigrationError> {
+    fn transaction(&'a mut self) -> Result<MTransaction<'a>, Error> {
         self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)
-            .transaction_err("error starting transaction")
+            .migration_err("error starting transaction")
     }
 }
 
 impl Transaction for Conn {
-    type Error = Error;
+    type Error = MError;
 
     fn execute(&mut self, query: &str) -> Result<usize, Self::Error> {
         let mut transaction = self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)?;
@@ -83,7 +83,7 @@ impl Transaction for Conn {
 }
 
 impl Transaction for PooledConn {
-    type Error = Error;
+    type Error = MError;
 
     fn execute(&mut self, query: &str) -> Result<usize, Self::Error> {
         let mut transaction = self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)?;
@@ -117,8 +117,8 @@ impl ExecuteMultiple for PooledConn {
     }
 }
 
-impl Query<MigrationVersion> for Conn {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl Query<AppliedMigration> for Conn {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         let mut transaction = self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)?;
         let version = query_migration_version(&mut transaction, query)?;
         transaction.commit()?;
@@ -126,8 +126,8 @@ impl Query<MigrationVersion> for Conn {
     }
 }
 
-impl Query<MigrationVersion> for PooledConn {
-    fn query(&mut self, query: &str) -> Result<Option<MigrationVersion>, Self::Error> {
+impl Query<AppliedMigration> for PooledConn {
+    fn query(&mut self, query: &str) -> Result<Option<AppliedMigration>, Self::Error> {
         let mut transaction = self.start_transaction(true, Some(IsolationLevel::RepeatableRead), None)?;
         let version = query_migration_version(&mut transaction, query)?;
         transaction.commit()?;
@@ -139,6 +139,6 @@ impl DefaultQueries for Conn {}
 
 impl DefaultQueries for PooledConn {}
 
-impl MigrateMultiple for Conn {}
+impl Migrate for Conn {}
 
-impl MigrateMultiple for PooledConn {}
+impl Migrate for PooledConn {}

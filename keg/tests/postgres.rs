@@ -1,16 +1,16 @@
 mod postgres {
     use chrono::{DateTime, Local};
-    use keg::{MigrateSingle as _, Migration};
+    use keg::{Migrate as _, Migration};
     use ttpostgres::{Connection, TlsMode};
 
     mod embedded {
         use keg::embed_migrations;
-        embed_migrations!("./keg/tests/sql_migrations");
+        embed_migrations!("keg/tests/sql_migrations");
     }
 
     mod broken {
         use keg::embed_migrations;
-        embed_migrations!("./keg/tests/sql_migrations_broken");
+        embed_migrations!("keg/tests/sql_migrations_broken");
     }
 
     fn clean_database() {
@@ -54,7 +54,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
 
         for row in &conn
@@ -95,7 +95,7 @@ mod postgres {
             Connection::connect("postgres://postgres@localhost:5432/postgres", TlsMode::None)
                 .unwrap();
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
 
         conn.execute(
@@ -147,7 +147,7 @@ mod postgres {
                 .unwrap();
 
         let mut runner = embedded::migrations::new();
-        runner.set_multiple(false);
+        runner.set_grouped(false);
         runner.run(&mut conn).unwrap();
 
         for row in &conn
@@ -263,7 +263,7 @@ mod postgres {
                 .unwrap();
 
         mod_migrations::migrations::new().run(&mut conn).unwrap();
-        let migration = Migration::new(
+        let migration = Migration::from_filename(
             "V4__add_year_field_to_cars",
             &"ALTER TABLE cars ADD year INTEGER;",
         )
